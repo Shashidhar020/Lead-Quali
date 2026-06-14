@@ -1,0 +1,42 @@
+/* src/index.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom global styles */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-slate-950 font-sans text-slate-100 antialiased;
+}
+
+/* Glassmorphism card utility */
+@layer utilities {
+  .glass-card {
+    @apply bg-white bg-opacity-20 backdrop-blur-md rounded-xl shadow-lg border border-white border-opacity-30;
+  }
+
+  .glass {
+    @apply bg-slate-900/70 backdrop-blur-xl shadow-2xl shadow-slate-950/20;
+  }
+
+  .glass-hover {
+    @apply hover:bg-slate-900/90 hover:border-slate-700;
+  }
+
+  .animate-float {
+    animation: float 4s ease-in-out infinite;
+  }
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
