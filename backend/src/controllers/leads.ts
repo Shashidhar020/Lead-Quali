@@ -66,6 +66,8 @@ export const getLeads = async (req: AuthenticatedRequest, res: Response) => {
   const sortBy = req.query.sortBy as string || 'created_at';
   const sortOrder = req.query.sortOrder as string || 'desc';
   const status = req.query.status as string || '';
+  const buyingIntent = req.query.buyingIntent as string || '';
+  const minScore = Number(req.query.minScore || 0);
   const page = parseInt(req.query.page as string) || 1;
   const limit = parseInt(req.query.limit as string) || 10;
   const offset = (page - 1) * limit;
@@ -95,7 +97,25 @@ export const getLeads = async (req: AuthenticatedRequest, res: Response) => {
       paramIndex++;
     }
 
+    if (buyingIntent) {
+      queryConditions.push(`la.buying_intent = $${paramIndex}`);
+      queryParams.push(buyingIntent);
+      paramIndex++;
+    }
+
+    if (minScore > 0) {
+      queryConditions.push(`la.lead_score >= $${paramIndex}`);
+      queryParams.push(minScore);
+      paramIndex++;
+    }
+
     const whereClause = queryConditions.length > 0 ? `WHERE ${queryConditions.join(' AND ')}` : '';
+    const sortColumn =
+      actualSortBy === 'lead_score'
+        ? 'la.lead_score'
+        : actualSortBy === 'business_type'
+        ? 'la.business_type'
+        : `l.${actualSortBy}`;
 
     // Fetch total matching records
     const countSql = `
@@ -114,7 +134,7 @@ export const getLeads = async (req: AuthenticatedRequest, res: Response) => {
       FROM leads l
       LEFT JOIN lead_analysis la ON l.id = la.lead_id
       ${whereClause}
-      ORDER BY ${actualSortBy === 'lead_score' ? 'la.lead_score' : 'l.' + actualSortBy} ${actualSortOrder}
+      ORDER BY ${sortColumn} ${actualSortOrder}
       LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
     `;
     
@@ -186,6 +206,11 @@ export const updateLeadStatus = async (req: AuthenticatedRequest, res: Response)
 
   if (!status) {
     return res.status(400).json({ message: 'Status is required' });
+  }
+
+  const allowedStatuses = ['new', 'contacted', 'qualified', 'unqualified'];
+  if (!allowedStatuses.includes(status)) {
+    return res.status(400).json({ message: 'Invalid status value' });
   }
 
   try {
@@ -309,6 +334,113 @@ export const recentLeads = async (req: AuthenticatedRequest, res: Response) => {
     return res.status(200).json(leads);
   } catch (error) {
     console.error('[LEAD CONTROLLER] Recent leads error:', error);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+export const getInsights = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const db = await getDB();
+
+    const statusBreakdown = await db.query(`
+      SELECT status, COUNT(*) as count
+      FROM leads
+      GROUP BY status
+      ORDER BY count DESC
+    `);
+
+    const businessBreakdown = await db.query(`
+      SELECT business_type, COUNT(*) as count, AVG(lead_score) as average_score
+      FROM lead_analysis
+      GROUP BY business_type
+      ORDER BY count DESC
+    `);
+
+    const intentBreakdown = await db.query(`
+      SELECT buying_intent, COUNT(*) as count
+      FROM lead_analysis
+      GROUP BY buying_intent
+      ORDER BY count DESC
+    `);
+
+    const hotLeads = await db.query(`
+      SELECT l.id, l.name, l.email, l.phone, l.business_requirement, l.status, l.created_at,
+             la.lead_score, la.business_type, la.buying_intent, la.urgency_score
+      FROM leads l
+      INNER JOIN lead_analysis la ON l.id = la.lead_id
+      WHERE la.lead_score >= 80 OR la.urgency_score >= 80 OR la.buying_intent = 'High'
+      ORDER BY la.lead_score DESC, la.urgency_score DESC, l.created_at DESC
+      LIMIT 5
+    `);
+
+    const totals = await db.query(`
+      SELECT
+        COUNT(*) as total_leads,
+        SUM(CASE WHEN status = 'qualified' THEN 1 ELSE 0 END) as qualified_leads
+      FROM leads
+    `);
+
+    const totalLeads = Number(totals[0]?.total_leads || 0);
+    const qualifiedLeads = Number(totals[0]?.qualified_leads || 0);
+    const conversionRate = totalLeads > 0 ? Math.round((qualifiedLeads / totalLeads) * 100) : 0;
+
+    return res.status(200).json({
+      statusBreakdown,
+      businessBreakdown,
+      intentBreakdown,
+      hotLeads,
+      conversionRate,
+    });
+  } catch (error) {
+    console.error('[LEAD CONTROLLER] Insights error:', error);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+export const exportLeadsCsv = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const db = await getDB();
+    const leads = await db.query(`
+      SELECT l.id, l.name, l.phone, l.email, l.business_requirement, l.budget, l.notes, l.status, l.created_at,
+             la.lead_score, la.business_type, la.buying_intent, la.urgency_score, la.summary, la.follow_up_message
+      FROM leads l
+      LEFT JOIN lead_analysis la ON l.id = la.lead_id
+      ORDER BY l.created_at DESC
+    `);
+
+    const headers = [
+      'id',
+      'name',
+      'phone',
+      'email',
+      'business_requirement',
+      'budget',
+      'notes',
+      'status',
+      'created_at',
+      'lead_score',
+      'business_type',
+      'buying_intent',
+      'urgency_score',
+      'summary',
+      'follow_up_message',
+    ];
+
+    const escapeCsv = (value: unknown) => {
+      const text = value === null || value === undefined ? '' : String(value);
+      return `"${text.replace(/"/g, '""')}"`;
+    };
+
+    const csv = [
+      headers.join(','),
+      ...leads.map((lead: any) => headers.map((header) => escapeCsv(lead[header])).join(',')),
+    ].join('\n');
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="qualiai-leads.csv"');
+    return res.status(200).send(csv);
+  } catch (error) {
+    console.error('[LEAD CONTROLLER] Export CSV error:', error);
     return res.status(500).json({ message: 'Internal server error' });
   }
 };

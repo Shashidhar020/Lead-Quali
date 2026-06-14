@@ -123,22 +123,31 @@ export const getDB = async (): Promise<DB> => {
       });
     });
 
+    const toSqliteStatement = (sql: string, params?: any[]) => {
+      const sqliteParams: any[] = [];
+      const sqliteSql = sql.replace(/\$([0-9]+)/g, (_, index) => {
+        sqliteParams.push((params || [])[Number(index) - 1]);
+        return '?';
+      });
+
+      return { sqliteSql, sqliteParams };
+    };
+
     dbInstance = {
       isPostgres: () => false,
       query: <T = any>(sql: string, params?: any[]): Promise<T[]> => {
-        // Convert Postgres $1, $2 to SQLite ? placeholders
-        const sqliteSql = sql.replace(/\$[0-9]+/g, '?');
+        const { sqliteSql, sqliteParams } = toSqliteStatement(sql, params);
         return new Promise((resolve, reject) => {
-          sqliteDb.all(sqliteSql, params || [], (err, rows) => {
+          sqliteDb.all(sqliteSql, sqliteParams, (err, rows) => {
             if (err) reject(err);
             else resolve(rows as T[]);
           });
         });
       },
       run: (sql: string, params?: any[]): Promise<{ lastID?: number | string }> => {
-        const sqliteSql = sql.replace(/\$[0-9]+/g, '?');
+        const { sqliteSql, sqliteParams } = toSqliteStatement(sql, params);
         return new Promise((resolve, reject) => {
-          sqliteDb.run(sqliteSql, params || [], function (err) {
+          sqliteDb.run(sqliteSql, sqliteParams, function (err) {
             if (err) reject(err);
             else resolve({ lastID: this.lastID });
           });

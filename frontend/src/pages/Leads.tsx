@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Search, ArrowUpDown, ChevronLeft, ChevronRight, Sparkles, Filter, MessageSquare } from 'lucide-react';
+import { Search, ArrowUpDown, ChevronLeft, ChevronRight, Sparkles, Filter, MessageSquare, Download } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 interface LeadItem {
@@ -24,18 +24,21 @@ interface LeadsResponse {
 }
 
 export const Leads: React.FC = () => {
-  const { token } = useAuth();
+  const { authFetch } = useAuth();
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState('created_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('');
+  const [intentFilter, setIntentFilter] = useState('');
+  const [highPriorityOnly, setHighPriorityOnly] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   
   const limit = 10;
 
   // Fetch leads list with query filters
   const { data, isLoading } = useQuery<LeadsResponse>({
-    queryKey: ['leadsList', search, sortBy, sortOrder, page, statusFilter],
+    queryKey: ['leadsList', search, sortBy, sortOrder, page, statusFilter, intentFilter, highPriorityOnly],
     queryFn: async () => {
       const queryParams = new URLSearchParams({
         search,
@@ -44,11 +47,11 @@ export const Leads: React.FC = () => {
         page: page.toString(),
         limit: limit.toString(),
         status: statusFilter,
+        buyingIntent: intentFilter,
+        minScore: highPriorityOnly ? '80' : '',
       });
 
-      const res = await fetch(`/api/leads?${queryParams.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await authFetch(`/api/leads?${queryParams.toString()}`);
       if (!res.ok) throw new Error('Failed to fetch leads');
       return res.json();
     },
@@ -74,6 +77,30 @@ export const Leads: React.FC = () => {
     setPage(1); // Reset page on filter
   };
 
+  const handleIntentFilter = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setIntentFilter(e.target.value);
+    setPage(1);
+  };
+
+  const handleExportCsv = async () => {
+    setIsExporting(true);
+    try {
+      const res = await authFetch('/api/leads/export.csv');
+      if (!res.ok) throw new Error('Failed to export leads');
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'qualiai-leads.csv';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Search and Filters Header */}
@@ -91,7 +118,7 @@ export const Leads: React.FC = () => {
           />
         </div>
 
-        <div className="flex items-center space-x-3">
+        <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center space-x-2 text-xs font-semibold text-slate-400">
             <Filter className="h-4 w-4 text-slate-500" />
             <span>Filter Status:</span>
@@ -107,6 +134,36 @@ export const Leads: React.FC = () => {
             <option value="qualified">Qualified</option>
             <option value="unqualified">Unqualified</option>
           </select>
+          <select
+            value={intentFilter}
+            onChange={handleIntentFilter}
+            className="bg-slate-900/80 border border-slate-800 rounded-lg text-slate-300 text-xs py-2 px-3 outline-none focus:border-brand-500/50 cursor-pointer"
+          >
+            <option value="">All Intent</option>
+            <option value="High">High Intent</option>
+            <option value="Medium">Medium Intent</option>
+            <option value="Low">Low Intent</option>
+          </select>
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-800 bg-slate-900/80 px-3 py-2 text-xs font-semibold text-slate-300">
+            <input
+              type="checkbox"
+              checked={highPriorityOnly}
+              onChange={(event) => {
+                setHighPriorityOnly(event.target.checked);
+                setPage(1);
+              }}
+              className="h-3.5 w-3.5 accent-brand-600"
+            />
+            <span>80%+ only</span>
+          </label>
+          <button
+            onClick={handleExportCsv}
+            disabled={isExporting}
+            className="inline-flex items-center space-x-2 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-700 disabled:opacity-50"
+          >
+            <Download className="h-4 w-4" />
+            <span>{isExporting ? 'Exporting...' : 'Export CSV'}</span>
+          </button>
         </div>
       </div>
 

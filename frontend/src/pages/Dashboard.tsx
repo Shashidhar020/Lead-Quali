@@ -1,7 +1,7 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Users, Calendar, Award, Sparkles, TrendingUp, ArrowRight, UserCheck } from 'lucide-react';
+import { Users, Calendar, Award, Sparkles, TrendingUp, ArrowRight, UserCheck, Target, Flame, PieChart } from 'lucide-react';
 import MetricCard from '../components/MetricCard';
 import { useAuth } from '../context/AuthContext';
 
@@ -23,16 +23,44 @@ interface RecentLead {
   buying_intent: string;
 }
 
+interface InsightCount {
+  status?: string;
+  business_type?: string;
+  buying_intent?: string;
+  count: number | string;
+  average_score?: number | string;
+}
+
+interface HotLead {
+  id: number;
+  name: string;
+  email: string;
+  phone: string;
+  business_requirement: string;
+  status: string;
+  created_at: string;
+  lead_score: number;
+  business_type: string;
+  buying_intent: string;
+  urgency_score: number;
+}
+
+interface Insights {
+  statusBreakdown: InsightCount[];
+  businessBreakdown: InsightCount[];
+  intentBreakdown: InsightCount[];
+  hotLeads: HotLead[];
+  conversionRate: number;
+}
+
 export const Dashboard: React.FC = () => {
-  const { token } = useAuth();
+  const { authFetch } = useAuth();
 
   // Fetch metrics stats
   const { data: stats, isLoading: statsLoading } = useQuery<Stats>({
     queryKey: ['dashboardStats'],
     queryFn: async () => {
-      const res = await fetch('/api/leads/stats', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await authFetch('/api/leads/stats');
       if (!res.ok) throw new Error('Failed to fetch stats');
       return res.json();
     },
@@ -42,13 +70,22 @@ export const Dashboard: React.FC = () => {
   const { data: recentLeads, isLoading: leadsLoading } = useQuery<RecentLead[]>({
     queryKey: ['recentLeads'],
     queryFn: async () => {
-      const res = await fetch('/api/leads/recent', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await authFetch('/api/leads/recent');
       if (!res.ok) throw new Error('Failed to fetch recent leads');
       return res.json();
     },
   });
+
+  const { data: insights, isLoading: insightsLoading } = useQuery<Insights>({
+    queryKey: ['leadInsights'],
+    queryFn: async () => {
+      const res = await authFetch('/api/leads/insights');
+      if (!res.ok) throw new Error('Failed to fetch insights');
+      return res.json();
+    },
+  });
+
+  const topBusinessCount = insights?.businessBreakdown.reduce((sum, item) => sum + Number(item.count || 0), 0) || 0;
 
   return (
     <div className="space-y-8">
@@ -98,6 +135,98 @@ export const Dashboard: React.FC = () => {
           icon={Sparkles}
           isLoading={statsLoading}
         />
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <div className="glass p-6 rounded-2xl border border-slate-800">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-slate-100">Pipeline Conversion</h3>
+              <p className="text-xs text-slate-500 mt-1">Qualified leads as a share of total pipeline</p>
+            </div>
+            <Target className="h-5 w-5 text-brand-400" />
+          </div>
+          <div className="mt-6 flex items-end justify-between">
+            <span className="text-4xl font-extrabold text-slate-100">{insights?.conversionRate ?? 0}%</span>
+            <div className="h-2 flex-1 ml-6 rounded-full bg-slate-800 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-emerald-500"
+                style={{ width: `${Math.min(insights?.conversionRate ?? 0, 100)}%` }}
+              />
+            </div>
+          </div>
+          <div className="mt-5 grid grid-cols-2 gap-3">
+            {(insights?.statusBreakdown || []).slice(0, 4).map((item) => (
+              <div key={item.status} className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+                <p className="text-[10px] uppercase tracking-wider text-slate-500">{item.status || 'unknown'}</p>
+                <p className="mt-1 text-lg font-bold text-slate-200">{Number(item.count)}</p>
+              </div>
+            ))}
+            {insightsLoading && <div className="h-16 rounded-lg bg-slate-800 animate-pulse col-span-2" />}
+          </div>
+        </div>
+
+        <div className="glass p-6 rounded-2xl border border-slate-800">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-slate-100">Business Segment Mix</h3>
+              <p className="text-xs text-slate-500 mt-1">Where demand is coming from</p>
+            </div>
+            <PieChart className="h-5 w-5 text-brand-400" />
+          </div>
+          <div className="mt-6 space-y-4">
+            {(insights?.businessBreakdown || []).slice(0, 5).map((item) => {
+              const count = Number(item.count || 0);
+              const percent = topBusinessCount > 0 ? Math.round((count / topBusinessCount) * 100) : 0;
+              return (
+                <div key={item.business_type || 'unknown'} className="space-y-1.5">
+                  <div className="flex justify-between text-xs">
+                    <span className="font-semibold text-slate-300">{item.business_type || 'Unknown'}</span>
+                    <span className="text-slate-500">{count} leads - avg {Math.round(Number(item.average_score || 0))}%</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-slate-800 overflow-hidden">
+                    <div className="h-full rounded-full bg-brand-500" style={{ width: `${percent}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+            {!insightsLoading && (!insights?.businessBreakdown || insights.businessBreakdown.length === 0) && (
+              <p className="text-xs text-slate-500">Submit leads to see business segmentation.</p>
+            )}
+          </div>
+        </div>
+
+        <div className="glass p-6 rounded-2xl border border-slate-800">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-slate-100">Hot Leads</h3>
+              <p className="text-xs text-slate-500 mt-1">Highest priority follow-ups</p>
+            </div>
+            <Flame className="h-5 w-5 text-amber-400" />
+          </div>
+          <div className="mt-5 space-y-3">
+            {(insights?.hotLeads || []).slice(0, 4).map((lead) => (
+              <Link
+                key={lead.id}
+                to={`/leads/${lead.id}`}
+                className="block rounded-xl border border-slate-800 bg-slate-950/40 p-3 hover:border-brand-500/40 hover:bg-slate-900 transition"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-slate-200">{lead.name}</p>
+                    <p className="truncate text-[11px] text-slate-500">{lead.business_type} - {lead.buying_intent} intent</p>
+                  </div>
+                  <span className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-xs font-bold text-emerald-400">
+                    {lead.lead_score}%
+                  </span>
+                </div>
+              </Link>
+            ))}
+            {!insightsLoading && (!insights?.hotLeads || insights.hotLeads.length === 0) && (
+              <p className="text-xs text-slate-500">No hot leads yet. New high-intent submissions will appear here.</p>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Main dashboard body splits */}

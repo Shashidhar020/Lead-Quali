@@ -26,7 +26,7 @@ interface LeadDetailsData {
 
 export const LeadDetails: React.FC = () => {
   const { id } = useParams();
-  const { token } = useAuth();
+  const { authFetch } = useAuth();
   const queryClient = useQueryClient();
   const [copied, setCopied] = useState(false);
   const [statusVal, setStatusVal] = useState('');
@@ -35,9 +35,7 @@ export const LeadDetails: React.FC = () => {
   const { data: lead, isLoading, error } = useQuery<LeadDetailsData>({
     queryKey: ['leadDetails', id],
     queryFn: async () => {
-      const res = await fetch(`/api/leads/${id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await authFetch(`/api/leads/${id}`);
       if (!res.ok) throw new Error('Lead not found');
       const data = await res.json();
       setStatusVal(data.status);
@@ -48,11 +46,10 @@ export const LeadDetails: React.FC = () => {
   // Update status mutation
   const updateStatusMutation = useMutation({
     mutationFn: async (newStatus: string) => {
-      const res = await fetch(`/api/leads/${id}/status`, {
+      const res = await authFetch(`/api/leads/${id}/status`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ status: newStatus }),
       });
@@ -68,11 +65,8 @@ export const LeadDetails: React.FC = () => {
   // Re-run AI analysis mutation
   const reanalyzeMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch(`/api/leads/${id}/reanalyze`, {
+      const res = await authFetch(`/api/leads/${id}/reanalyze`, {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
       });
       if (!res.ok) throw new Error('Reanalysis failed');
       return res.json();

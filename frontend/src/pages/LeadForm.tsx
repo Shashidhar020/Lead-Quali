@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Sparkles, CheckCircle2, User, Phone, Mail, DollarSign, FileText, PlusCircle, Building2, Scissors, Dumbbell, Stethoscope, ShieldCheck, GraduationCap } from 'lucide-react';
 
 export const LeadForm: React.FC = () => {
@@ -15,6 +16,7 @@ export const LeadForm: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<any>(null);
+  const [submittedLeadId, setSubmittedLeadId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const categories = [
@@ -58,6 +60,7 @@ export const LeadForm: React.FC = () => {
       }
 
       setAnalysisResult(data.analysis);
+      setSubmittedLeadId(data.leadId);
       setSuccess(true);
       
       // Reset form
@@ -106,7 +109,7 @@ export const LeadForm: React.FC = () => {
               <div className="space-y-2">
                 <h3 className="text-2xl font-bold text-slate-100">Request Received!</h3>
                 <p className="text-sm text-slate-400">
-                  Our system has processed your requirement. Here is your initial qualification status:
+                  Lead #{submittedLeadId} was saved, AI-qualified, and sent to the notification workflow.
                 </p>
               </div>
 
@@ -140,11 +143,21 @@ export const LeadForm: React.FC = () => {
               )}
 
               <button
-                onClick={() => setSuccess(false)}
-                className="mt-6 px-6 py-3 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-xl text-xs border border-slate-700 hover:border-slate-600 transition"
+                onClick={() => {
+                  setSuccess(false);
+                  setSubmittedLeadId(null);
+                  setAnalysisResult(null);
+                }}
+                className="mt-6 mr-3 px-6 py-3 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-xl text-xs border border-slate-700 hover:border-slate-600 transition"
               >
                 Submit another request
               </button>
+              <Link
+                to="/leads"
+                className="inline-flex px-6 py-3 bg-brand-600 hover:bg-brand-500 text-white font-semibold rounded-xl text-xs border border-brand-500/30 transition"
+              >
+                View in dashboard
+              </Link>
             </div>
           ) : (
             /* Submission Form */

@@ -12,7 +12,7 @@ interface ConfigInfo {
 }
 
 export const Settings: React.FC = () => {
-  const { token } = useAuth();
+  const { authFetch } = useAuth();
   const [testSuccess, setTestSuccess] = useState<string | null>(null);
   const [testingTelegram, setTestingTelegram] = useState(false);
 
@@ -20,9 +20,7 @@ export const Settings: React.FC = () => {
   const { data: config, isLoading } = useQuery<ConfigInfo>({
     queryKey: ['systemConfig'],
     queryFn: async () => {
-      const res = await fetch('/api/leads/config-info', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await authFetch('/api/leads/config-info');
       if (!res.ok) throw new Error('Failed to load settings');
       return res.json();
     },
@@ -32,11 +30,10 @@ export const Settings: React.FC = () => {
     setTestingTelegram(true);
     setTestSuccess(null);
     try {
-      const res = await fetch('/api/leads/test-telegram', {
+      const res = await authFetch('/api/leads/test-telegram', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
         },
       });
       const data = await res.json();
